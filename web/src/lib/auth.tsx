@@ -1,21 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api, setAuthToken, getAuthToken } from './api';
-
-export type AuthUser = {
-  id: string;
-  username: string;
-  role: 'owner' | 'cashier';
-};
-
-type AuthContextValue = {
-  user: AuthUser | null;
-  loading: boolean;
-  token: string | null;
-  login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
-};
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+import { AuthContext, type AuthContextValue, type AuthUser } from './authContext';
 
 export function AuthProvider(props: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -42,10 +27,9 @@ export function AuthProvider(props: { children: React.ReactNode }) {
         setAuthToken(null);
         setToken(null);
         setUser(null);
-      } finally {
-        if (!mounted) return;
-        setLoading(false);
       }
+      if (!mounted) return;
+      setLoading(false);
     }
     boot();
     return () => {
@@ -76,11 +60,4 @@ export function AuthProvider(props: { children: React.ReactNode }) {
 
   return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;
 }
-
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
-}
-
 

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../lib/authContext';
+import { getErrorMessage } from '../lib/errors';
 
 export function LoginPage() {
   const { user, login } = useAuth();
@@ -18,10 +19,8 @@ export function LoginPage() {
     try {
       await login(username.trim(), password);
       nav('/', { replace: true });
-    } catch (e: any) {
-      const errorMessage = e?.message || 'Login failed. Please check your username and password.';
-      alert(errorMessage);
-      console.error('Login error:', e);
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Login failed. Please check your username and password.'));
     } finally {
       setSubmitting(false);
     }
@@ -30,26 +29,26 @@ export function LoginPage() {
   return (
     <div className='mx-auto w-full max-w-md py-16'>
       <div className='mb-6 text-center'>
-        <div className='text-3xl font-extrabold tracking-tight'>Login</div>
-        <div className='mt-2 text-slate-500'>Sign in to continue</div>
+        <div className='text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100'>Login</div>
+        <div className='mt-2 text-slate-500 dark:text-slate-400'>Sign in to continue</div>
       </div>
 
       <Card className='p-6'>
         <div className='space-y-4'>
           <div>
-            <div className='text-sm font-semibold text-slate-700'>Username</div>
+            <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Username</div>
             <input
-              className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+              className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500'
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete='username'
             />
           </div>
           <div>
-            <div className='text-sm font-semibold text-slate-700'>Password</div>
+            <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Password</div>
             <input
               type='password'
-              className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+              className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500'
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete='current-password'

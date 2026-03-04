@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { apiPathWithToken } from '../lib/api';
 import type { InventoryReport } from '../lib/types';
 import { money } from '../lib/format';
+import { getErrorMessage } from '../lib/errors';
 
 function formatDateTime(v: string): string {
   const d = new Date(v);
@@ -25,7 +26,6 @@ export function ReportsPage() {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
     api
       .get<InventoryReport>('/api/reports/inventory')
       .then((d) => {
@@ -33,9 +33,9 @@ export function ReportsPage() {
         setData(d);
         setError(null);
       })
-      .catch((e: any) => {
+      .catch((e: unknown) => {
         if (!mounted) return;
-        setError(e?.message ?? 'Failed to load reports');
+        setError(getErrorMessage(e, 'Failed to load reports'));
       })
       .finally(() => {
         if (!mounted) return;
@@ -50,12 +50,12 @@ export function ReportsPage() {
     <div>
       <div className='no-print mb-6 flex items-start justify-between gap-4'>
         <div>
-          <div className='text-3xl font-extrabold tracking-tight'>Inventory Reports</div>
-          <div className='mt-1 text-slate-500'>Summary and movement history</div>
+          <div className='text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100'>Inventory Reports</div>
+          <div className='mt-1 text-slate-500 dark:text-slate-400'>Summary and movement history</div>
         </div>
         <a
           href={apiPathWithToken('/api/reports/inventory/pdf')}
-          className='inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+          className='inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
         >
           <Download size={16} />
           Download PDF
@@ -84,10 +84,10 @@ export function ReportsPage() {
       </div>
 
       <Card className='mt-6 p-6'>
-        <div className='text-xl font-extrabold'>Inventory Movement History</div>
-        <div className='mt-4 overflow-x-auto rounded-xl border border-slate-200'>
+        <div className='text-xl font-extrabold text-slate-900 dark:text-slate-100'>Inventory Movement History</div>
+        <div className='mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800'>
           <table className='w-full text-left text-sm'>
-            <thead className='bg-slate-50 text-slate-600'>
+            <thead className='bg-slate-50 text-slate-600 dark:bg-slate-950/50 dark:text-slate-300'>
               <tr>
                 <th className='px-4 py-3 font-medium'>Date</th>
                 <th className='px-4 py-3 font-medium'>Product</th>
@@ -98,7 +98,7 @@ export function ReportsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className='px-4 py-10 text-center text-slate-500'>
+                  <td colSpan={4} className='px-4 py-10 text-center text-slate-500 dark:text-slate-400'>
                     Loading...
                   </td>
                 </tr>
@@ -110,17 +110,17 @@ export function ReportsPage() {
                 </tr>
               ) : (data?.history?.length ?? 0) === 0 ? (
                 <tr>
-                  <td colSpan={4} className='px-4 py-10 text-center text-slate-500'>
+                  <td colSpan={4} className='px-4 py-10 text-center text-slate-500 dark:text-slate-400'>
                     No movement history yet.
                   </td>
                 </tr>
               ) : (
                 data!.history.map((h, idx) => (
-                  <tr key={idx} className='border-t border-slate-200'>
-                    <td className='px-4 py-3 text-slate-600'>{formatDateTime(h.date)}</td>
-                    <td className='px-4 py-3 font-medium text-slate-900'>{h.product}</td>
-                    <td className='px-4 py-3 text-slate-900'>{h.change}</td>
-                    <td className='px-4 py-3 text-slate-600'>{h.reason}</td>
+                  <tr key={idx} className='border-t border-slate-200 dark:border-slate-800'>
+                    <td className='px-4 py-3 text-slate-600 dark:text-slate-300'>{formatDateTime(h.date)}</td>
+                    <td className='px-4 py-3 font-medium text-slate-900 dark:text-slate-100'>{h.product}</td>
+                    <td className='px-4 py-3 text-slate-900 dark:text-slate-100'>{h.change}</td>
+                    <td className='px-4 py-3 text-slate-600 dark:text-slate-300'>{h.reason}</td>
                   </tr>
                 ))
               )}

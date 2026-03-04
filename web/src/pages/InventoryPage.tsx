@@ -4,10 +4,12 @@ import { Card } from '../components/Card';
 import { api } from '../lib/api';
 import type { Product, ProductHistoryRow } from '../lib/types';
 import { money } from '../lib/format';
+import { getErrorMessage } from '../lib/errors';
 
 type ProductForm = {
   name: string;
   category: string;
+  unit_cost: number;
   price: number;
   stock: number;
   low_stock_threshold: number;
@@ -44,6 +46,7 @@ type EditProductForm = {
 const defaultForm: ProductForm = {
   name: '',
   category: 'Crochet',
+  unit_cost: 0,
   price: 0,
   stock: 0,
   low_stock_threshold: 5
@@ -73,8 +76,8 @@ export function InventoryPage() {
       const data = await api.get<Product[]>('/api/products');
       setRows(data);
       setError(null);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load inventory');
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to load inventory'));
     } finally {
       setLoading(false);
     }
@@ -110,12 +113,13 @@ export function InventoryPage() {
         ...form,
         stock: Math.max(0, Math.floor(form.stock || 0)),
         low_stock_threshold: Math.max(0, Math.floor(form.low_stock_threshold || 0)),
-        price: Math.max(0, Number(form.price || 0))
+        price: Math.max(0, Number(form.price || 0)),
+        unit_cost: Math.max(0, Number(form.unit_cost || 0))
       });
       closeAdd();
       await load();
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to add product');
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to add product'));
     }
   }
 
@@ -177,8 +181,8 @@ export function InventoryPage() {
       await api.post(`/api/products/${restock.productId}/restock`, { qty, reason });
       closeRestock();
       await load();
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to restock');
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to restock'));
     }
   }
 
@@ -191,8 +195,8 @@ export function InventoryPage() {
       await api.post(`/api/products/${removeStock.productId}/decrease`, { qty, reason });
       closeRemoveStock();
       await load();
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to remove stock');
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to remove stock'));
     }
   }
 
@@ -207,8 +211,8 @@ export function InventoryPage() {
       await api.put(`/api/products/${editProduct.productId}`, { price, unit_cost, sku, low_stock_threshold });
       closeEdit();
       await load();
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to update product');
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to update product'));
     }
   }
 
@@ -220,8 +224,8 @@ export function InventoryPage() {
       setRows((prev) => prev.filter((r) => String(r.id) !== String(deleteProduct.productId)));
       closeDeleteProduct();
       await load();
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to remove product');
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to remove product'));
     }
   }
 
@@ -232,8 +236,8 @@ export function InventoryPage() {
     try {
       const rows = await api.get<ProductHistoryRow[]>(`/api/products/${p.id}/history`);
       setHistoryRows(rows);
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to load history');
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to load history'));
       setHistoryFor(null);
     } finally {
       setHistoryLoading(false);
@@ -249,8 +253,8 @@ export function InventoryPage() {
     <div>
       <div className='mb-6 flex items-start justify-between gap-4'>
         <div>
-          <div className='text-3xl font-extrabold tracking-tight'>Inventory</div>
-          <div className='mt-1 text-slate-500'>Manage products and stock levels</div>
+          <div className='text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100'>Inventory</div>
+          <div className='mt-1 text-slate-500 dark:text-slate-400'>Manage products and stock levels</div>
         </div>
         <button
           className='rounded-2xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-soft hover:bg-brand-700'
@@ -264,11 +268,12 @@ export function InventoryPage() {
       <Card className='overflow-hidden'>
         <div className='overflow-x-auto'>
           <table className='w-full text-left text-sm'>
-            <thead className='bg-white'>
-              <tr className='border-b border-slate-200 text-slate-600'>
+            <thead className='bg-white dark:bg-slate-950/50'>
+              <tr className='border-b border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-300'>
                 <th className='px-5 py-4 font-medium'>Product</th>
                 <th className='px-5 py-4 font-medium'>Category</th>
-                <th className='px-5 py-4 font-medium'>Price</th>
+                <th className='px-5 py-4 font-medium'>Buy</th>
+                <th className='px-5 py-4 font-medium'>Sell</th>
                 <th className='px-5 py-4 font-medium'>Stock</th>
                 <th className='px-5 py-4 font-medium'>Actions</th>
               </tr>
@@ -276,34 +281,35 @@ export function InventoryPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className='px-5 py-10 text-center text-slate-500'>
+                  <td colSpan={6} className='px-5 py-10 text-center text-slate-500 dark:text-slate-400'>
                     Loading...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={5} className='px-5 py-10 text-center text-red-600'>
+                  <td colSpan={6} className='px-5 py-10 text-center text-red-600'>
                     {error}
                   </td>
                 </tr>
               ) : empty ? (
                 <tr>
-                  <td colSpan={5} className='px-5 py-10 text-center text-slate-500'>
+                  <td colSpan={6} className='px-5 py-10 text-center text-slate-500 dark:text-slate-400'>
                     No products yet. Click "Add Product".
                   </td>
                 </tr>
               ) : (
                 rows.map((p) => (
-                  <tr key={p.id} className='border-b border-slate-100'>
-                    <td className='px-5 py-4 font-medium text-slate-900'>{p.name}</td>
-                    <td className='px-5 py-4 text-slate-600'>{p.category}</td>
-                    <td className='px-5 py-4 text-slate-600'>{money(Number(p.price))}</td>
+                  <tr key={p.id} className='border-b border-slate-100 dark:border-slate-800'>
+                    <td className='px-5 py-4 font-medium text-slate-900 dark:text-slate-100'>{p.name}</td>
+                    <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{p.category}</td>
+                    <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{money(Number(p.unit_cost ?? 0))}</td>
+                    <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{money(Number(p.price ?? 0))}</td>
                     <td className='px-5 py-4'>
                       <span
                         className={
                           Number(p.stock) <= Number(p.low_stock_threshold)
-                            ? 'rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700'
-                            : 'rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700'
+                            ? 'rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-rose-950/50 dark:text-rose-300'
+                            : 'rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                         }
                       >
                         {p.stock}
@@ -314,7 +320,7 @@ export function InventoryPage() {
                         <button
                           type='button'
                           onClick={() => openHistory(p)}
-                          className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+                          className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                           title='View stock history'
                         >
                           <History size={16} />
@@ -323,7 +329,7 @@ export function InventoryPage() {
                         <button
                           type='button'
                           onClick={() => openEdit(p)}
-                          className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+                          className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                           title='Edit price'
                         >
                           <Pencil size={16} />
@@ -332,21 +338,21 @@ export function InventoryPage() {
                         <button
                           type='button'
                           onClick={() => openRestock(p)}
-                          className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+                          className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                         >
                           Restock
                         </button>
                         <button
                           type='button'
                           onClick={() => openRemoveStock(p)}
-                          className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+                          className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                         >
                           Remove Stock
                         </button>
                         <button
                           type='button'
                           onClick={() => openDeleteProduct(p)}
-                          className='inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50'
+                          className='inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 dark:border-rose-900/60 dark:bg-slate-950/50 dark:text-rose-300 dark:hover:bg-rose-950/40'
                           title='Remove product from inventory'
                         >
                           <Trash2 size={16} />
@@ -364,13 +370,13 @@ export function InventoryPage() {
 
       {showAdd && (
         <div className='fixed inset-0 z-20 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center'>
-          <div className='my-8 w-full max-w-xl rounded-2xl bg-white p-6 shadow-soft sm:p-8'>
+          <div className='my-8 w-full max-w-xl rounded-2xl bg-white p-6 shadow-soft dark:bg-slate-950 dark:ring-1 dark:ring-slate-800 sm:p-8'>
             <div className='flex items-center justify-between'>
-              <div className='text-lg font-extrabold text-slate-900'>Add New Product</div>
+              <div className='text-lg font-extrabold text-slate-900 dark:text-slate-100'>Add New Product</div>
               <button
                 type='button'
                 onClick={closeAdd}
-                className='rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                className='rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100'
                 aria-label='Close'
               >
                 <X size={18} />
@@ -379,42 +385,53 @@ export function InventoryPage() {
 
             <div className='mt-6 space-y-5'>
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Name</div>
+                <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Name</div>
                 <input
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </div>
 
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Category</div>
+                <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Category</div>
                 <input
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
                 />
               </div>
 
-              <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+              <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
                 <div>
-                  <div className='text-sm font-semibold text-slate-700'>Price ($)</div>
+                  <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Buy price ($)</div>
                   <input
                     type='number'
                     min={0}
                     step='0.01'
-                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
+                    value={form.unit_cost}
+                    onChange={(e) => setForm({ ...form, unit_cost: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Sell price ($)</div>
+                  <input
+                    type='number'
+                    min={0}
+                    step='0.01'
+                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                     value={form.price}
                     onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
                   />
                 </div>
                 <div>
-                  <div className='text-sm font-semibold text-slate-700'>Initial Stock</div>
+                  <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Initial Stock</div>
                   <input
                     type='number'
                     min={0}
                     step='1'
-                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                     value={form.stock}
                     onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
                   />
@@ -422,12 +439,12 @@ export function InventoryPage() {
               </div>
 
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Low Stock Alert Threshold</div>
+                <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Low Stock Alert Threshold</div>
                 <input
                   type='number'
                   min={0}
                   step='1'
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                   value={form.low_stock_threshold}
                   onChange={(e) =>
                     setForm({ ...form, low_stock_threshold: Number(e.target.value) })
@@ -527,7 +544,7 @@ export function InventoryPage() {
               </div>
 
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Unit price ($)</div>
+                <div className='text-sm font-semibold text-slate-700'>Sell price ($)</div>
                 <input
                   type='number'
                   min={0}
@@ -539,7 +556,7 @@ export function InventoryPage() {
               </div>
 
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Unit cost ($)</div>
+                <div className='text-sm font-semibold text-slate-700'>Buy price ($)</div>
                 <input
                   type='number'
                   min={0}

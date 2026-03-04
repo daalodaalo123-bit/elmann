@@ -6,12 +6,15 @@ import { money } from '../lib/format';
 import { CheckCircle2, ClipboardList, Printer, Plus, Save, User } from 'lucide-react';
 import { clsx } from 'clsx';
 import { apiPathWithToken } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
 
 type CartItem = {
   product_id: string;
   name: string;
   unit_price: number;
   qty: number;
+  discount: number;
+  discountMode: DiscountMode;
 };
 
 type DiscountMode = 'amount' | 'percent';
@@ -21,8 +24,9 @@ type ParkedCart = {
   name: string;
   saved_at: string;
   cart: CartItem[];
-  discount: number;
-  discountMode: DiscountMode;
+  // legacy fields (older versions stored an overall sale discount)
+  discount?: number;
+  discountMode?: DiscountMode;
   payment: PaymentMethod;
   saleDate: string;
   customerId: string;
@@ -49,8 +53,6 @@ export function PosPage() {
   const [qty, setQty] = useState<number>(1);
 
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [discount, setDiscount] = useState<number>(0);
-  const [discountMode, setDiscountMode] = useState<DiscountMode>('amount');
   const [payment, setPayment] = useState<PaymentMethod>('Cash');
   const [submitting, setSubmitting] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<string | null>(null);
@@ -65,7 +67,6 @@ export function PosPage() {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
     Promise.all([api.get<Product[]>('/api/products'), api.get<Customer[]>('/api/customers')])
       .then(([p, c]) => {
         if (!mounted) return;
@@ -73,9 +74,9 @@ export function PosPage() {
         setCustomers(c);
         setError(null);
       })
-      .catch((e: any) => {
+      .catch((e: unknown) => {
         if (!mounted) return;
-        setError(e?.message ?? 'Failed to load data');
+        setError(getErrorMessage(e, 'Failed to load data'));
       })
       .finally(() => {
         if (!mounted) return;
@@ -92,22 +93,43 @@ export function PosPage() {
     [products, selectedProductId]
   );
 
-  const subtotal = useMemo(() => cart.reduce((s, it) => s + it.unit_price * it.qty, 0), [cart]);
+  const computedCart = useMemo(() => {
+    const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+    const safe = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0);
+    const round2 = (n: number) => Math.round(n * 100) / 100;
 
-  const discountAmount = useMemo(() => {
-    const d = Number(discount || 0);
-    if (!Number.isFinite(d) || d <= 0) return 0;
-    if (discountMode === 'percent') {
-      const pct = Math.min(100, Math.max(0, d));
-      return (subtotal * pct) / 100;
-    }
-    return d;
-  }, [discount, discountMode, subtotal]);
+    const lines = cart.map((it) => {
+      const unitPrice = safe(it.unit_price);
+      const qty = Math.max(1, Math.floor(safe(it.qty)));
+      const lineTotal = unitPrice * qty;
 
-  const total = useMemo(
-    () => Math.max(0, subtotal - discountAmount),
-    [subtotal, discountAmount]
-  );
+      const rawDiscount = safe(it.discount);
+      const discountAmt =
+        it.discountMode === 'percent'
+          ? (lineTotal * clamp(rawDiscount, 0, 100)) / 100
+          : clamp(rawDiscount, 0, lineTotal);
+
+      const discount = round2(discountAmt);
+      const after = Math.max(0, round2(lineTotal - discount));
+      const effectiveUnitPrice = qty > 0 ? round2(after / qty) : 0;
+
+      return {
+        ...it,
+        qty,
+        unitPrice,
+        lineTotal: round2(lineTotal),
+        discount,
+        after,
+        effectiveUnitPrice
+      };
+    });
+
+    const subtotal = round2(lines.reduce((s, it) => s + it.lineTotal, 0));
+    const discountTotal = round2(lines.reduce((s, it) => s + it.discount, 0));
+    const total = round2(Math.max(0, subtotal - discountTotal));
+
+    return { lines, subtotal, discountTotal, total };
+  }, [cart]);
 
   const selectedCustomer = useMemo(
     () => customers.find((c) => c.id === customerId),
@@ -141,6 +163,26 @@ export function PosPage() {
     }
   }
 
+  function normalizeCart(raw: unknown): CartItem[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((it) => ({
+      product_id:
+        it && typeof it === 'object' && 'product_id' in it ? String((it as { product_id?: unknown }).product_id ?? '') : '',
+      name: it && typeof it === 'object' && 'name' in it ? String((it as { name?: unknown }).name ?? '') : '',
+      unit_price:
+        it && typeof it === 'object' && 'unit_price' in it
+          ? Number((it as { unit_price?: unknown }).unit_price ?? 0)
+          : 0,
+      qty: it && typeof it === 'object' && 'qty' in it ? Number((it as { qty?: unknown }).qty ?? 1) : 1,
+      discount:
+        it && typeof it === 'object' && 'discount' in it ? Number((it as { discount?: unknown }).discount ?? 0) : 0,
+      discountMode:
+        it && typeof it === 'object' && 'discountMode' in it && (it as { discountMode?: unknown }).discountMode === 'percent'
+          ? 'percent'
+          : 'amount'
+    }));
+  }
+
   function parkCart() {
     if (!cart.length) return;
     const name = prompt('Name this parked cart (optional):', customerName.trim() || 'Parked cart');
@@ -150,8 +192,8 @@ export function PosPage() {
       name: (name ?? '').trim() || 'Parked cart',
       saved_at: new Date().toISOString(),
       cart,
-      discount,
-      discountMode,
+      discount: 0,
+      discountMode: 'amount',
       payment,
       saleDate,
       customerId,
@@ -161,8 +203,6 @@ export function PosPage() {
     persistParked(next);
     // clear current
     setCart([]);
-    setDiscount(0);
-    setDiscountMode('amount');
     setCustomerId('');
     setCustomerName('');
     setLastReceipt(null);
@@ -171,9 +211,7 @@ export function PosPage() {
   function resumeCart(id: string) {
     const found = parked.find((p) => p.id === id);
     if (!found) return;
-    setCart(found.cart);
-    setDiscount(found.discount);
-    setDiscountMode(found.discountMode);
+    setCart(normalizeCart(found.cart));
     setPayment(found.payment);
     setSaleDate(found.saleDate);
     setCustomerId(found.customerId);
@@ -202,7 +240,9 @@ export function PosPage() {
           product_id: selectedProduct.id,
           name: selectedProduct.name,
           unit_price: Number(selectedProduct.price),
-          qty: q
+          qty: q,
+          discount: 0,
+          discountMode: 'amount'
         }
       ];
     });
@@ -218,18 +258,21 @@ export function PosPage() {
         customer: customerName.trim() ? customerName.trim() : undefined,
         customer_id: customerId ? customerId : undefined,
         payment_method: payment,
-        discount: Number(discountAmount || 0),
+        // discounts are applied per-item via unit_price overrides
+        discount: 0,
         unpaid: false,
-        items: cart.map((c) => ({ product_id: c.product_id, qty: c.qty }))
+        items: computedCart.lines.map((c) => ({
+          product_id: c.product_id,
+          qty: c.qty,
+          unit_price: c.effectiveUnitPrice
+        }))
       });
       setLastReceipt(res.receipt_ref);
       setCart([]);
-      setDiscount(0);
-      setDiscountMode('amount');
       setCustomerId('');
       setCustomerName('');
-    } catch (e: any) {
-      alert(e?.message ?? 'Sale failed');
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Sale failed'));
     } finally {
       setSubmitting(false);
     }
@@ -238,8 +281,8 @@ export function PosPage() {
   return (
     <div>
       <div className='mb-6'>
-        <div className='text-3xl font-extrabold tracking-tight'>POS</div>
-        <div className='mt-1 text-slate-500'>Create and complete sales transactions</div>
+        <div className='text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100'>POS</div>
+        <div className='mt-1 text-slate-500 dark:text-slate-400'>Create and complete sales transactions</div>
       </div>
 
       <div className='grid grid-cols-1 gap-6 lg:grid-cols-12'>
@@ -247,17 +290,17 @@ export function PosPage() {
         <div className='lg:col-span-7'>
           <Card className='p-6'>
             <div className='flex items-center gap-2 text-lg font-bold'>
-              <span className='inline-flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-700'>
+              <span className='inline-flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-700 dark:bg-slate-900 dark:text-brand-200'>
                 <Plus size={18} />
               </span>
-              Add Item
+              <span className='text-slate-900 dark:text-slate-100'>Add Item</span>
             </div>
 
             <div className='mt-5 grid grid-cols-1 gap-4 md:grid-cols-12'>
               <div className='md:col-span-7'>
-                <div className='text-sm font-medium text-slate-600'>Product</div>
+                <div className='text-sm font-medium text-slate-600 dark:text-slate-300'>Product</div>
                 <select
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:focus:border-brand-300'
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
                 >
@@ -268,16 +311,16 @@ export function PosPage() {
                     </option>
                   ))}
                 </select>
-                {loading && <div className='mt-2 text-sm text-slate-500'>Loading...</div>}
+                {loading && <div className='mt-2 text-sm text-slate-500 dark:text-slate-400'>Loading...</div>}
                 {error && <div className='mt-2 text-sm text-red-600'>{error}</div>}
               </div>
 
               <div className='md:col-span-3'>
-                <div className='text-sm font-medium text-slate-600'>Qty</div>
+                <div className='text-sm font-medium text-slate-600 dark:text-slate-300'>Qty</div>
                 <input
                   type='number'
                   min={1}
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:focus:border-brand-300'
                   value={qty}
                   onChange={(e) => setQty(Number(e.target.value))}
                 />
@@ -299,16 +342,16 @@ export function PosPage() {
             {/* Sale Date */}
             <div className='mt-5 grid grid-cols-1 gap-4 md:grid-cols-12'>
               <div className='md:col-span-5'>
-                <div className='text-sm font-medium text-slate-600'>Sale Date</div>
+                <div className='text-sm font-medium text-slate-600 dark:text-slate-300'>Sale Date</div>
                 <input
                   type='datetime-local'
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:focus:border-brand-300'
                   value={saleDate}
                   onChange={(e) => setSaleDate(e.target.value)}
                 />
               </div>
               <div className='md:col-span-7'>
-                <div className='mt-7 text-xs text-slate-500'>
+                <div className='mt-7 text-xs text-slate-500 dark:text-slate-400'>
                   You can set past or future dates. This will be saved in History.
                 </div>
               </div>
@@ -317,9 +360,9 @@ export function PosPage() {
             {/* Customer */}
             <div className='mt-5 grid grid-cols-1 gap-4 md:grid-cols-12'>
               <div className='md:col-span-5'>
-                <div className='text-sm font-medium text-slate-600'>Customer (CRM)</div>
+                <div className='text-sm font-medium text-slate-600 dark:text-slate-300'>Customer (CRM)</div>
                 <select
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:focus:border-brand-300'
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
                 >
@@ -334,13 +377,13 @@ export function PosPage() {
               </div>
 
               <div className='md:col-span-7'>
-                <div className='text-sm font-medium text-slate-600'>Customer Name</div>
+                <div className='text-sm font-medium text-slate-600 dark:text-slate-300'>Customer Name</div>
                 <div className='relative mt-2'>
-                  <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400'>
+                  <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500'>
                     <User size={16} />
                   </span>
                   <input
-                    className='w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-3 text-sm outline-none focus:border-brand-300'
+                    className='w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-300'
                     placeholder='Optional: type a customer name'
                     value={customerName}
                     onChange={(e) => {
@@ -355,22 +398,27 @@ export function PosPage() {
 
           <Card className='mt-6 p-6'>
             <div className='flex items-center justify-between'>
-              <div className='text-lg font-bold'>Current Cart</div>
-              <div className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600'>
+              <div className='text-lg font-bold text-slate-900 dark:text-slate-100'>Current Cart</div>
+              <div className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-300'>
                 {cart.length} items
               </div>
             </div>
 
             <div className='mt-3 flex flex-wrap items-center justify-between gap-3'>
-              <div className='text-xs text-slate-500'>
+              <div className='text-xs text-slate-500 dark:text-slate-400'>
                 {parked.length ? `${parked.length} parked` : 'No parked carts'}
               </div>
+              {computedCart.discountTotal > 0 ? (
+                <div className='rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-800 dark:border-brand-900/50 dark:bg-brand-900/20 dark:text-brand-200'>
+                  Item discounts: −{money(computedCart.discountTotal)}
+                </div>
+              ) : null}
               <div className='flex items-center gap-2'>
                 <button
                   type='button'
                   onClick={parkCart}
                   disabled={!cart.length}
-                  className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50'
+                  className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                 >
                   <Save size={16} />
                   Park cart
@@ -379,9 +427,9 @@ export function PosPage() {
             </div>
 
             {parked.length ? (
-              <div className='mt-4 overflow-x-auto rounded-xl border border-slate-200'>
+              <div className='mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800'>
                 <table className='w-full text-left text-sm'>
-                  <thead className='bg-slate-50 text-slate-600'>
+                  <thead className='bg-slate-50 text-slate-600 dark:bg-slate-950/50 dark:text-slate-300'>
                     <tr>
                       <th className='px-4 py-3 font-medium'>Parked carts</th>
                       <th className='px-4 py-3 font-medium'>Items</th>
@@ -390,15 +438,15 @@ export function PosPage() {
                   </thead>
                   <tbody>
                     {parked.slice(0, 5).map((p) => (
-                      <tr key={p.id} className='border-t border-slate-200'>
-                        <td className='px-4 py-3 font-medium text-slate-900'>{p.name}</td>
-                        <td className='px-4 py-3 text-slate-600'>{p.cart.length}</td>
+                      <tr key={p.id} className='border-t border-slate-200 dark:border-slate-800'>
+                        <td className='px-4 py-3 font-medium text-slate-900 dark:text-slate-100'>{p.name}</td>
+                        <td className='px-4 py-3 text-slate-600 dark:text-slate-300'>{p.cart.length}</td>
                         <td className='px-4 py-3'>
                           <div className='flex items-center justify-end gap-2'>
                             <button
                               type='button'
                               onClick={() => resumeCart(p.id)}
-                              className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+                              className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                             >
                               <ClipboardList size={16} />
                               Resume
@@ -406,7 +454,7 @@ export function PosPage() {
                             <button
                               type='button'
                               onClick={() => deleteParked(p.id)}
-                              className='rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50'
+                              className='rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 dark:border-rose-900/60 dark:bg-slate-950/50 dark:text-rose-300 dark:hover:bg-rose-950/40'
                             >
                               Delete
                             </button>
@@ -419,34 +467,125 @@ export function PosPage() {
               </div>
             ) : null}
 
-            <div className='mt-4 overflow-x-auto rounded-xl border border-slate-200'>
+            <div className='mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800'>
               <table className='w-full text-left text-sm'>
-                <thead className='bg-slate-50 text-slate-600'>
+                <thead className='bg-slate-50 text-slate-600 dark:bg-slate-950/50 dark:text-slate-300'>
                   <tr>
                     <th className='px-4 py-3 font-medium'>Item Name</th>
                     <th className='px-4 py-3 font-medium'>Price</th>
                     <th className='px-4 py-3 font-medium'>Qty</th>
-                    <th className='px-4 py-3 font-medium'>Total</th>
+                    <th className='px-4 py-3 font-medium'>Discount</th>
+                    <th className='px-4 py-3 font-medium text-right'>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cart.length === 0 ? (
                     <tr>
-                      <td className='px-4 py-10 text-center text-slate-500' colSpan={4}>
+                      <td className='px-4 py-10 text-center text-slate-500 dark:text-slate-400' colSpan={5}>
                         No items added yet
                       </td>
                     </tr>
                   ) : (
-                    cart.map((it) => (
-                      <tr key={it.product_id} className='border-t border-slate-200'>
-                        <td className='px-4 py-3 font-medium text-slate-900'>{it.name}</td>
-                        <td className='px-4 py-3 text-slate-600'>{money(it.unit_price)}</td>
-                        <td className='px-4 py-3 text-slate-600'>{it.qty}</td>
-                        <td className='px-4 py-3 font-semibold text-slate-900'>
-                          {money(it.unit_price * it.qty)}
+                    <>
+                      {computedCart.lines.map((it) => (
+                        <tr key={it.product_id} className='border-t border-slate-200 dark:border-slate-800'>
+                          <td className='px-4 py-3 font-medium text-slate-900 dark:text-slate-100'>
+                            {it.name}
+                          </td>
+                          <td className='px-4 py-3 text-slate-600 dark:text-slate-300'>{money(it.unitPrice)}</td>
+                          <td className='px-4 py-3 text-slate-600 dark:text-slate-300'>{it.qty}</td>
+                          <td className='px-4 py-3'>
+                            <div className='flex items-center gap-2'>
+                              <button
+                                type='button'
+                                className='rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-extrabold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
+                                title='Toggle discount type'
+                                onClick={() =>
+                                  setCart((prev) =>
+                                    prev.map((x) =>
+                                      x.product_id === it.product_id
+                                        ? {
+                                            ...x,
+                                            discountMode: x.discountMode === 'amount' ? 'percent' : 'amount'
+                                          }
+                                        : x
+                                    )
+                                  )
+                                }
+                              >
+                                {it.discountMode === 'amount' ? '$' : '%'}
+                              </button>
+                              <input
+                                type='number'
+                                min={0}
+                                step='0.01'
+                                className='w-24 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-100'
+                                value={Number.isFinite(Number(it.discount)) ? it.discount : 0}
+                                onChange={(e) =>
+                                  setCart((prev) =>
+                                    prev.map((x) =>
+                                      x.product_id === it.product_id
+                                        ? { ...x, discount: Number(e.target.value) }
+                                        : x
+                                    )
+                                  )
+                                }
+                              />
+                              {it.discount > 0 ? (
+                                <span className='text-xs font-semibold text-brand-700 dark:text-brand-200'>
+                                  −{money(it.discount)}
+                                </span>
+                              ) : (
+                                <span className='text-xs text-slate-500 dark:text-slate-400'>—</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className='px-4 py-3 text-right'>
+                            {it.discount > 0 ? (
+                              <div>
+                                <div className='text-sm font-semibold text-slate-500 line-through dark:text-slate-400'>
+                                  {money(it.lineTotal)}
+                                </div>
+                                <div className='text-base font-extrabold text-slate-900 dark:text-slate-100'>
+                                  {money(it.after)}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className='text-base font-semibold text-slate-900 dark:text-slate-100'>
+                                {money(it.lineTotal)}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+
+                      <tr className='border-t border-slate-200 bg-white/60 dark:border-slate-800 dark:bg-slate-950/40'>
+                        <td colSpan={4} className='px-4 py-3 text-right text-sm font-semibold text-slate-600 dark:text-slate-300'>
+                          Subtotal
+                        </td>
+                        <td className='px-4 py-3 text-right text-sm font-extrabold text-slate-900 dark:text-slate-100'>
+                          {money(computedCart.subtotal)}
                         </td>
                       </tr>
-                    ))
+                      {computedCart.discountTotal > 0 ? (
+                        <tr className='border-t border-slate-200 bg-white/60 dark:border-slate-800 dark:bg-slate-950/40'>
+                          <td colSpan={4} className='px-4 py-3 text-right text-sm font-semibold text-slate-600 dark:text-slate-300'>
+                            Discount
+                          </td>
+                          <td className='px-4 py-3 text-right text-sm font-extrabold text-brand-700 dark:text-brand-200'>
+                            −{money(computedCart.discountTotal)}
+                          </td>
+                        </tr>
+                      ) : null}
+                      <tr className='border-t border-slate-200 bg-white/60 dark:border-slate-800 dark:bg-slate-950/40'>
+                        <td colSpan={4} className='px-4 py-3 text-right text-sm font-semibold text-slate-600 dark:text-slate-300'>
+                          Total
+                        </td>
+                        <td className='px-4 py-3 text-right text-sm font-extrabold text-slate-900 dark:text-slate-100'>
+                          {money(computedCart.total)}
+                        </td>
+                      </tr>
+                    </>
                   )}
                 </tbody>
               </table>
@@ -459,45 +598,31 @@ export function PosPage() {
           <div className='rounded-2xl bg-slate-900 p-6 text-white shadow-soft'>
             <div className='flex items-center justify-between'>
               <div className='text-sm text-slate-300'>Subtotal</div>
-              <div className='text-sm font-semibold'>{money(subtotal)}</div>
+              <div className='text-sm font-semibold'>{money(computedCart.subtotal)}</div>
             </div>
 
             <div className='mt-4 flex items-center justify-between gap-3'>
-              <div className='text-sm text-slate-300'>Discount</div>
-              <div className='flex items-center gap-2 rounded-xl bg-slate-800 px-3 py-2'>
-                <button
-                  type='button'
-                  onClick={() => setDiscountMode(discountMode === 'amount' ? 'percent' : 'amount')}
-                  className='rounded-lg bg-slate-700 px-2 py-1 text-xs font-bold text-white'
-                  title='Toggle discount type'
-                >
-                  {discountMode === 'amount' ? '$' : '%'}
-                </button>
-                <input
-                  type='number'
-                  min={0}
-                  value={discount}
-                  onChange={(e) => setDiscount(Number(e.target.value))}
-                  className='w-24 bg-transparent text-right text-sm text-white outline-none'
-                />
+              <div className='text-sm text-slate-300'>Item discounts</div>
+              <div className='rounded-xl bg-slate-800 px-3 py-2 text-right text-sm font-semibold text-white'>
+                −{money(computedCart.discountTotal)}
               </div>
             </div>
 
             <div className='mt-5 border-t border-slate-700 pt-5'>
               <div className='flex items-end justify-between'>
                 <div className='text-lg font-bold'>Total</div>
-                <div className='text-4xl font-extrabold tracking-tight'>{money(total)}</div>
+                <div className='text-4xl font-extrabold tracking-tight'>{money(computedCart.total)}</div>
               </div>
             </div>
           </div>
 
           {lastReceipt ? (
             <Card className='mt-6 p-6'>
-              <div className='text-lg font-bold'>Last sale</div>
-              <div className='mt-1 text-sm text-slate-600'>Receipt: {lastReceipt}</div>
+              <div className='text-lg font-bold text-slate-900 dark:text-slate-100'>Last sale</div>
+              <div className='mt-1 text-sm text-slate-600 dark:text-slate-300'>Receipt: {lastReceipt}</div>
               <div className='mt-4 flex flex-wrap gap-2'>
                 <a
-                  className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+                  className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                   href={apiPathWithToken(`/api/sales/${lastReceipt}/pdf`)}
                   target='_blank'
                   rel='noreferrer'
@@ -510,7 +635,7 @@ export function PosPage() {
           ) : null}
 
           <Card className='mt-6 p-6'>
-            <div className='text-lg font-bold'>Payment Method</div>
+            <div className='text-lg font-bold text-slate-900 dark:text-slate-100'>Payment Method</div>
             <div className='mt-4 grid grid-cols-3 gap-3'>
               {(['Cash', 'Zaad', 'Edahab'] as PaymentMethod[]).map((m) => (
                 <button
@@ -520,8 +645,8 @@ export function PosPage() {
                   className={clsx(
                     'rounded-2xl border px-3 py-4 text-center text-sm font-semibold transition',
                     payment === m
-                      ? 'border-brand-500 bg-brand-50 text-brand-700'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-900/20 dark:text-brand-200'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                   )}
                 >
                   {m === 'Cash' ? 'Cash' : m.toUpperCase()}
@@ -540,7 +665,7 @@ export function PosPage() {
             </button>
           </Card>
 
-          <div className='mt-4 text-xs text-slate-500'>Tip: Manage customer info in the Customers tab.</div>
+          <div className='mt-4 text-xs text-slate-500 dark:text-slate-400'>Tip: Manage customer info in the Customers tab.</div>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { DashboardPage } from './pages/DashboardPage';
 import { PosPage } from './pages/PosPage';
 import { InventoryPage } from './pages/InventoryPage';
+import { InventoryValuePage } from './pages/InventoryValuePage';
 import { ReportsPage } from './pages/ReportsPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { CustomersPage } from './pages/CustomersPage';
@@ -39,6 +40,14 @@ export default function App() {
             element={
               <RequireAuth roles={['owner']}>
                 <InventoryPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path='/inventory/value'
+            element={
+              <RequireAuth roles={['owner']}>
+                <InventoryValuePage />
               </RequireAuth>
             }
           />

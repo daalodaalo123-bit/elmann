@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { X, Download, Upload } from 'lucide-react';
 import { Card } from '../components/Card';
 import { api } from '../lib/api';
@@ -22,9 +22,9 @@ const emptyForm: CustomerForm = {
 
 function toCsv(rows: Customer[]): string {
   const header = ['name', 'phone', 'email', 'address', 'notes'];
-  const esc = (v: any) => {
+  const esc = (v: unknown) => {
     const s = String(v ?? '');
-    if (/[\n\r,\"]/g.test(s)) return `"${s.replace(/\"/g, '""')}"`;
+    if (/[\n\r,"]/g.test(s)) return `"${s.replace(/"/g, '""')}"`;
     return s;
   };
   const lines = [header.join(',')];
@@ -110,7 +110,7 @@ export function CustomersPage() {
 
   const query = useMemo(() => search.trim(), [search]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.get<Customer[]>(
@@ -120,14 +120,14 @@ export function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [query]);
 
   useEffect(() => {
     const t = setTimeout(() => {
       load();
     }, 150);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [load, query]);
 
   function openAdd() {
     setEditing(null);
@@ -208,21 +208,21 @@ export function CustomersPage() {
     <div>
       <div className='mb-6 flex items-start justify-between gap-4'>
         <div>
-          <div className='text-3xl font-extrabold tracking-tight'>Customers</div>
-          <div className='mt-1 text-slate-500'>CRM â€” store customer information</div>
+          <div className='text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100'>Customers</div>
+          <div className='mt-1 text-slate-500 dark:text-slate-400'>CRM — store customer information</div>
         </div>
 
         <div className='flex items-center gap-2'>
           <button
             type='button'
             onClick={downloadCsv}
-            className='inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+            className='inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
           >
             <Download size={16} />
             Export
           </button>
 
-          <label className='inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'>
+          <label className='inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'>
             <Upload size={16} />
             Import
             <input
@@ -249,7 +249,7 @@ export function CustomersPage() {
 
       <div className='mb-4'>
         <input
-          className='w-full max-w-md rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-brand-300'
+          className='w-full max-w-md rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-100 dark:placeholder:text-slate-500'
           placeholder='Search name, phone, email...'
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -259,8 +259,8 @@ export function CustomersPage() {
       <Card className='overflow-hidden'>
         <div className='overflow-x-auto'>
           <table className='w-full text-left text-sm'>
-            <thead className='bg-white'>
-              <tr className='border-b border-slate-200 text-slate-600'>
+            <thead className='bg-white dark:bg-slate-950/50'>
+              <tr className='border-b border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-300'>
                 <th className='px-5 py-4 font-medium'>Name</th>
                 <th className='px-5 py-4 font-medium'>Phone</th>
                 <th className='px-5 py-4 font-medium'>Email</th>
@@ -271,28 +271,28 @@ export function CustomersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className='px-5 py-10 text-center text-slate-500'>
+                  <td colSpan={5} className='px-5 py-10 text-center text-slate-500 dark:text-slate-400'>
                     Loading...
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className='px-5 py-10 text-center text-slate-500'>
+                  <td colSpan={5} className='px-5 py-10 text-center text-slate-500 dark:text-slate-400'>
                     No customers yet.
                   </td>
                 </tr>
               ) : (
                 rows.map((c) => (
-                  <tr key={c.id} className='border-b border-slate-100'>
-                    <td className='px-5 py-4 font-medium text-slate-900'>{c.name}</td>
-                    <td className='px-5 py-4 text-slate-600'>{c.phone ?? 'â€”'}</td>
-                    <td className='px-5 py-4 text-slate-600'>{c.email ?? 'â€”'}</td>
-                    <td className='px-5 py-4 text-slate-600'>{c.address ?? 'â€”'}</td>
+                  <tr key={c.id} className='border-b border-slate-100 dark:border-slate-800'>
+                    <td className='px-5 py-4 font-medium text-slate-900 dark:text-slate-100'>{c.name}</td>
+                    <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{c.phone ?? '—'}</td>
+                    <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{c.email ?? '—'}</td>
+                    <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{c.address ?? '—'}</td>
                     <td className='px-5 py-4'>
                       <button
                         type='button'
                         onClick={() => openEdit(c)}
-                        className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+                        className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                       >
                         Edit
                       </button>
@@ -307,15 +307,15 @@ export function CustomersPage() {
 
       {showModal && (
         <div className='fixed inset-0 z-20 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center'>
-          <div className='my-8 w-full max-w-xl rounded-2xl bg-white p-6 shadow-soft sm:p-8'>
+          <div className='my-8 w-full max-w-xl rounded-2xl bg-white p-6 shadow-soft dark:bg-slate-950 dark:ring-1 dark:ring-slate-800 sm:p-8'>
             <div className='flex items-center justify-between'>
-              <div className='text-lg font-extrabold text-slate-900'>
+              <div className='text-lg font-extrabold text-slate-900 dark:text-slate-100'>
                 {editing ? 'Edit Customer' : 'Add New Customer'}
               </div>
               <button
                 type='button'
                 onClick={close}
-                className='rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                className='rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100'
                 aria-label='Close'
               >
                 <X size={18} />
@@ -324,9 +324,9 @@ export function CustomersPage() {
 
             <div className='mt-6 space-y-5'>
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Name</div>
+                <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Name</div>
                 <input
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
@@ -334,17 +334,17 @@ export function CustomersPage() {
 
               <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
                 <div>
-                  <div className='text-sm font-semibold text-slate-700'>Phone</div>
+                  <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Phone</div>
                   <input
-                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   />
                 </div>
                 <div>
-                  <div className='text-sm font-semibold text-slate-700'>Email</div>
+                  <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Email</div>
                   <input
-                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                    className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                   />
@@ -352,18 +352,18 @@ export function CustomersPage() {
               </div>
 
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Address</div>
+                <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Address</div>
                 <input
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                   value={form.address}
                   onChange={(e) => setForm({ ...form, address: e.target.value })}
                 />
               </div>
 
               <div>
-                <div className='text-sm font-semibold text-slate-700'>Notes</div>
+                <div className='text-sm font-semibold text-slate-700 dark:text-slate-200'>Notes</div>
                 <textarea
-                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-brand-300'
+                  className='mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100'
                   rows={3}
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}

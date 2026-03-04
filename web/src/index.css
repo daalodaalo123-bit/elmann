@@ -6,6 +6,10 @@
   color-scheme: light;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
 html, body, #root {
   height: 100%;
 }
@@ -15,6 +19,21 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   background: #f8fafc;
   color: #0f172a;
+}
+
+html.dark body {
+  background: #020617; /* slate-950 */
+  color: #e2e8f0;      /* slate-200 */
+}
+
+/* Native select dropdowns: improve option contrast in dark mode (Chrome/Windows) */
+html.dark select,
+html.dark option {
+  color-scheme: dark;
+}
+html.dark select option {
+  background-color: #020617;
+  color: #e2e8f0;
 }
 
 .container-max {
