@@ -105,6 +105,10 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
 app.get('/api/auth/me', requireAuth, asyncHandler(async (req, res) => {
     res.json({ user: req.user });
 }));
+// Public health endpoint under /api for Vercel (so it can be rewritten from /health)
+app.get('/api/health', (_req, res) => {
+    res.json({ ok: true, name: 'Elman API', time: new Date().toISOString(), db: dbStatus() });
+});
 // Require auth for all remaining /api routes
 app.use('/api', requireAuth);
 // connect to MongoDB Atlas (best-effort)
