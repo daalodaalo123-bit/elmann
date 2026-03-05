@@ -171,6 +171,11 @@ app.get(
   })
 );
 
+// Public health endpoint under /api for Vercel (so it can be rewritten from /health)
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, name: 'Elman API', time: new Date().toISOString(), db: dbStatus() });
+});
+
 // Require auth for all remaining /api routes
 app.use('/api', requireAuth as any);
 
