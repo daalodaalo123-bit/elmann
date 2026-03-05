@@ -10,6 +10,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { LoginPage } from './pages/LoginPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 export default function App() {
   return (
@@ -80,6 +81,14 @@ export default function App() {
             element={
               <RequireAuth roles={['owner']}>
                 <ExpensesPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path='/settings'
+            element={
+              <RequireAuth roles={['owner']}>
+                <SettingsPage />
               </RequireAuth>
             }
           />

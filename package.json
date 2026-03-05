@@ -2,17 +2,17 @@
   "name": "elman",
   "private": true,
   "workspaces": [
-    "api",
+    "server",
     "web"
   ],
   "scripts": {
-    "dev": "concurrently -k \"npm --workspace api run dev\" \"npm --workspace web run dev\"",
-    "dev:api": "npm --workspace api run dev",
+    "dev": "concurrently -k \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "dev:server": "npm --workspace server run dev",
     "dev:web": "npm --workspace web run dev",
-    "build": "npm --workspace web run build && npm --workspace api run build",
-    "start": "npm --workspace api run start",
-    "db:init": "npm --workspace api run db:init",
-    "db:seed": "npm --workspace api run db:seed"
+    "build": "npm --workspace web run build && npm --workspace server run build",
+    "start": "npm --workspace server run start",
+    "db:init": "npm --workspace server run db:init",
+    "db:seed": "npm --workspace server run db:seed"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

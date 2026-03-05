@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Customer } from './models.js';
+import { Customer, Sale } from './models.js';
 export async function listCustomers(search) {
     const q = (search ?? '').trim();
     if (!q) {
@@ -26,4 +26,13 @@ export async function createCustomer(input) {
 export async function updateCustomer(id, patch) {
     const _id = new mongoose.Types.ObjectId(id);
     await Customer.updateOne({ _id }, { $set: patch });
+}
+export async function deleteCustomer(id) {
+    const _id = new mongoose.Types.ObjectId(id);
+    const del = await Customer.deleteOne({ _id });
+    if (!del.deletedCount)
+        throw new Error('Customer not found');
+    // Remove references so the customer doesn't keep showing in dashboard reports.
+    await Sale.updateMany({ customer_id: _id }, { $unset: { customer_id: 1, customer: 1 } });
+    return { ok: true };
 }

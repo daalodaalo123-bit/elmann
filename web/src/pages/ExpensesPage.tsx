@@ -11,6 +11,7 @@ import type {
 } from '../lib/types';
 import { money } from '../lib/format';
 import { getErrorMessage } from '../lib/errors';
+import { useAuth } from '../lib/authContext';
 
 const categories: ExpenseCategory[] = [
   'Inventory Purchase',
@@ -57,6 +58,7 @@ function cleanText(v: string | null | undefined): string {
 const defaultItem = (): ExpenseItem => ({ item_name: '', quantity: 1, unit_price: 0 });
 
 export function ExpensesPage() {
+  const { user } = useAuth();
   const [rows, setRows] = useState<ExpenseListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -117,6 +119,19 @@ export function ExpensesPage() {
   function closeExpense() {
     setOpenId(null);
     setDetail(null);
+  }
+
+  async function deleteExpensePermanently() {
+    if (user?.role !== 'owner' || !openId) return;
+    const ok = confirm('Delete this expense permanently? This cannot be undone.');
+    if (!ok) return;
+    try {
+      await api.del(`/api/expenses/${openId}`);
+      closeExpense();
+      await load();
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to delete expense'));
+    }
   }
 
   const itemsTotal = useMemo(() => {
@@ -283,6 +298,16 @@ export function ExpensesPage() {
             <div className='flex items-center justify-between'>
               <div className='text-lg font-extrabold text-slate-900 dark:text-slate-100'>Expense Details</div>
               <div className='flex items-center gap-2'>
+                {user?.role === 'owner' ? (
+                  <button
+                    type='button'
+                    onClick={deleteExpensePermanently}
+                    className='no-print inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:bg-slate-950/50 dark:text-rose-300 dark:hover:bg-rose-950/40'
+                    title='Delete permanently'
+                  >
+                    Delete
+                  </button>
+                ) : null}
                 <a
                   className='no-print rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
                   href={apiPathWithToken(`/api/expenses/${openId}/pdf`)}

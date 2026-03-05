@@ -249,7 +249,9 @@ export async function customerInsightsReport(period: ReportPeriod) {
 }
 
 export async function lowStockReport() {
-  const rows = await Product.find({}).select('name category price stock low_stock_threshold sku unit_cost').lean();
+  const rows = await Product.find({ archived: { $ne: true } })
+    .select('name category price stock low_stock_threshold sku unit_cost')
+    .lean();
   const low = rows
     .filter((p: any) => Number(p.stock ?? 0) <= Number(p.low_stock_threshold ?? 0))
     .map((p: any) => {

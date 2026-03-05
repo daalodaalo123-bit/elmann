@@ -6,6 +6,7 @@ import type { SaleDetail, SalesHistoryRow } from '../lib/types';
 import { money } from '../lib/format';
 import { apiPathWithToken } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
+import { useAuth } from '../lib/authContext';
 
 type RefundDraft = {
   receipt_ref: string;
@@ -32,6 +33,7 @@ function formatDateTime(v: string): string {
 }
 
 export function HistoryPage() {
+  const { user } = useAuth();
   const [rows, setRows] = useState<SalesHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -81,6 +83,21 @@ export function HistoryPage() {
       setRefund({ receipt_ref, reason: 'Refund', items });
     } catch (e: unknown) {
       alert(getErrorMessage(e, 'Failed to load sale'));
+    }
+  }
+
+  async function deleteSale(receipt_ref: string) {
+    if (user?.role !== 'owner') return;
+    const ok = confirm(
+      `Delete sale "${receipt_ref}" permanently?\n\nThis will remove it from history and dashboard numbers.`
+    );
+    if (!ok) return;
+    try {
+      await api.del(`/api/sales/${receipt_ref}`);
+      // reload list
+      setSearch((s) => s);
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to delete sale'));
     }
   }
 
@@ -200,13 +217,25 @@ export function HistoryPage() {
                       )}
                     </td>
                     <td className='px-5 py-4 whitespace-nowrap align-top'>
-                      <button
-                        type='button'
-                        onClick={() => openRefund(r.receipt_ref)}
-                        className='rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 dark:border-rose-900/60 dark:bg-slate-950/50 dark:text-rose-300 dark:hover:bg-rose-950/40'
-                      >
-                        Refund
-                      </button>
+                      <div className='flex items-center gap-2'>
+                        <button
+                          type='button'
+                          onClick={() => openRefund(r.receipt_ref)}
+                          className='rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 dark:border-rose-900/60 dark:bg-slate-950/50 dark:text-rose-300 dark:hover:bg-rose-950/40'
+                        >
+                          Refund
+                        </button>
+                        {user?.role === 'owner' ? (
+                          <button
+                            type='button'
+                            onClick={() => deleteSale(r.receipt_ref)}
+                            className='rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-50 dark:border-rose-900/60 dark:bg-slate-950/50 dark:text-rose-300 dark:hover:bg-rose-950/40'
+                            title='Delete permanently'
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
                       {r.refunded_total ? (
                         <div className='mt-1 text-xs text-slate-500 dark:text-slate-400'>
                           Refunded: {money(Number(r.refunded_total))}

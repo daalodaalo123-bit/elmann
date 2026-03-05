@@ -5,13 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 function loadEnv() {
-  // Try common locations so running from repo root still picks up api/.env
+  // Try common locations so running from repo root still picks up server/.env
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
 
   const candidates = [
     path.join(process.cwd(), '.env'),
-    path.join(process.cwd(), 'api', '.env'),
+    path.join(process.cwd(), 'server', '.env'),
     path.join(__dirname, '..', '..', '.env')
   ];
 
@@ -67,7 +67,7 @@ export async function connectDb(): Promise<void> {
   const raw = process.env.MONGODB_URI;
   if (!raw) {
     throw new Error(
-      'MONGODB_URI is not set. Create api/.env with MONGODB_URI (MongoDB Atlas connection string).'
+      'MONGODB_URI is not set. Create server/.env with MONGODB_URI (MongoDB Atlas connection string).'
     );
   }
   const uri = normalizeMongoUri(raw);

@@ -2,7 +2,7 @@
 
 ### Local setup (MongoDB + Auth)
 
-1) Create `api/.env`:
+1) Create `server/.env`:
 
 ```env
 MONGODB_URI=your_mongodb_connection_string
@@ -43,7 +43,7 @@ Then login at `http://localhost:5173/login`.
 Make sure the API server is running, then:
 
 ```bash
-cd api
+cd server
 npm run reset-password owner newpassword123
 ```
 
@@ -58,7 +58,7 @@ curl -X POST http://localhost:5050/api/auth/reset-password ^
   -d "{\"username\":\"owner\",\"new_password\":\"ownerpass123\"}"
 ```
 
-**Note:** Make sure your `api/.env` file has the correct `BOOTSTRAP_SECRET` value.
+**Note:** Make sure your `server/.env` file has the correct `BOOTSTRAP_SECRET` value.
 
 ### (Old) Local setup (PostgreSQL)
 This section is outdated; the current backend uses MongoDB.
@@ -69,7 +69,7 @@ This section is outdated; the current backend uses MongoDB.
 docker compose up -d
 ```
 
-2) Create `api/.env`:
+2) Create `server/.env`:
 
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/elman
@@ -96,7 +96,7 @@ Open: `http://localhost:5050`
 
 This backend uses **MongoDB** (Atlas recommended).
 
-- Create a Render **Web Service** for the `api` (or a single service that serves both API + built web).
+- Create a Render **Web Service** for the `server` (or a single service that serves both API + built web).
 - Set these env vars on the Render service:
   - `MONGODB_URI`: paste **only the URI value** (must start with `mongodb://` or `mongodb+srv://`)
   - `JWT_SECRET`

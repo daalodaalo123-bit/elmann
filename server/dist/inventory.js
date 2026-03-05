@@ -85,6 +85,7 @@ export async function decreaseStockProduct(id, qty, reason) {
 }
 export async function inventorySummary() {
     const totalsAgg = await Product.aggregate([
+        { $match: { archived: { $ne: true } } },
         {
             $group: {
                 _id: null,
@@ -111,7 +112,11 @@ export async function inventorySummary() {
         low_stock_items: 0,
         total_inventory_value: 0
     };
-    const history = await InventoryLog.find({}).sort({ created_at: -1 }).limit(50).lean();
+    const liveProductIds = await Product.find({ archived: { $ne: true } }).distinct('_id');
+    const history = await InventoryLog.find({ product_id: { $in: liveProductIds } })
+        .sort({ created_at: -1 })
+        .limit(50)
+        .lean();
     const mappedHistory = history.map((h) => ({
         date: h.created_at,
         product: h.product_name,
@@ -128,5 +133,21 @@ export async function archiveProduct(id) {
         if (!exists)
             throw new Error('Product not found');
         // already archived: treat as OK
+    }
+}
+export async function deleteProductPermanently(id) {
+    const _id = new mongoose.Types.ObjectId(id);
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+            await InventoryLog.deleteMany({ product_id: _id }).session(session);
+            const del = await Product.deleteOne({ _id }).session(session);
+            if (!del.deletedCount)
+                throw new Error('Product not found');
+        });
+        return { ok: true };
+    }
+    finally {
+        await session.endSession();
     }
 }

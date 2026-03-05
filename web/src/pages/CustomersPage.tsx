@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { X, Download, Upload } from 'lucide-react';
+import { X, Download, Upload, Trash2 } from 'lucide-react';
 import { Card } from '../components/Card';
 import { api } from '../lib/api';
 import type { Customer } from '../lib/types';
+import { useAuth } from '../lib/authContext';
+import { getErrorMessage } from '../lib/errors';
 
 type CustomerForm = {
   name: string;
@@ -100,6 +102,7 @@ function parseCsv(text: string): CustomerForm[] {
 }
 
 export function CustomersPage() {
+  const { user } = useAuth();
   const [rows, setRows] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -172,6 +175,20 @@ export function CustomersPage() {
 
     close();
     await load();
+  }
+
+  async function removeCustomer(c: Customer) {
+    if (user?.role !== 'owner') return;
+    const ok = confirm(
+      `Delete customer "${c.name}" permanently?\n\nThis will also remove the customer name from existing sales so it won’t show on the dashboard.`
+    );
+    if (!ok) return;
+    try {
+      await api.del(`/api/customers/${c.id}`);
+      await load();
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to delete customer'));
+    }
   }
 
   function downloadCsv() {
@@ -289,13 +306,26 @@ export function CustomersPage() {
                     <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{c.email ?? '—'}</td>
                     <td className='px-5 py-4 text-slate-600 dark:text-slate-300'>{c.address ?? '—'}</td>
                     <td className='px-5 py-4'>
-                      <button
-                        type='button'
-                        onClick={() => openEdit(c)}
-                        className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
-                      >
-                        Edit
-                      </button>
+                      <div className='flex items-center gap-2'>
+                        <button
+                          type='button'
+                          onClick={() => openEdit(c)}
+                          className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
+                        >
+                          Edit
+                        </button>
+                        {user?.role === 'owner' ? (
+                          <button
+                            type='button'
+                            onClick={() => removeCustomer(c)}
+                            className='inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-50 dark:border-rose-900/60 dark:bg-slate-950/50 dark:text-rose-300 dark:hover:bg-rose-950/40'
+                            title='Delete permanently'
+                          >
+                            <Trash2 size={16} />
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))

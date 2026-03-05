@@ -8,6 +8,7 @@ import {
   Moon,
   PiggyBank,
   Receipt,
+  Settings,
   ShoppingCart,
   Sun,
   Users
@@ -112,6 +113,9 @@ export function TopNav() {
             {user?.role === 'owner' ? (
               <NavItem to='/expenses' label='Expenses' icon={<Receipt size={18} />} />
             ) : null}
+            {user?.role === 'owner' ? (
+              <NavItem to='/settings' label='Settings' icon={<Settings size={18} />} />
+            ) : null}
           </nav>
 
           <div className='flex items-center gap-3'>
@@ -172,6 +176,9 @@ export function TopNav() {
             ) : null}
             {user?.role === 'owner' ? (
               <NavItemMobile to='/expenses' label='Expenses' icon={<Receipt size={18} />} />
+            ) : null}
+            {user?.role === 'owner' ? (
+              <NavItemMobile to='/settings' label='Settings' icon={<Settings size={18} />} />
             ) : null}
           </nav>
         ) : null}

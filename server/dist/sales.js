@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 import { Customer, InventoryLog, Product, Refund, Sale } from './models.js';
 import { makeReceiptRef } from './utils.js';
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 async function resolveCustomerName(customer_id, customer) {
     if (customer_id) {
         const c = await Customer.findById(new mongoose.Types.ObjectId(customer_id)).lean();
@@ -216,6 +219,52 @@ export async function refundSaleByReceipt(receipt_ref, input) {
             sale.fully_refunded = newRefundedTotal >= Number(sale.total ?? 0);
             await sale.save({ session });
             result = { ok: true, receipt_ref, total_refund, refunded_total: newRefundedTotal, fully_refunded: sale.fully_refunded };
+        });
+        return result;
+    }
+    finally {
+        await session.endSession();
+    }
+}
+export async function deleteSaleByReceipt(receipt_ref) {
+    const session = await mongoose.startSession();
+    try {
+        let result;
+        await session.withTransaction(async () => {
+            const sale = await Sale.findOne({ receipt_ref }).session(session);
+            if (!sale)
+                throw new Error('Sale not found');
+            const refunds = await Refund.find({ receipt_ref }).session(session).lean();
+            const soldByProduct = new Map();
+            for (const it of sale.items ?? []) {
+                const key = String(it.product_id);
+                const prev = soldByProduct.get(key);
+                soldByProduct.set(key, { product_id: it.product_id, qty: (prev?.qty ?? 0) + Number(it.qty ?? 0) });
+            }
+            const refundedByProduct = new Map();
+            for (const r of refunds) {
+                for (const it of r.items ?? []) {
+                    const key = String(it.product_id);
+                    refundedByProduct.set(key, (refundedByProduct.get(key) ?? 0) + Number(it.qty ?? 0));
+                }
+            }
+            // Restore stock to the state before this receipt existed:
+            // netAdjust = soldQty - refundedQty  (because refunds already restored stock)
+            for (const [key, sold] of soldByProduct.entries()) {
+                const refundedQty = refundedByProduct.get(key) ?? 0;
+                const netAdjust = Math.max(0, Number(sold.qty ?? 0) - Number(refundedQty ?? 0));
+                if (netAdjust > 0) {
+                    await Product.updateOne({ _id: sold.product_id }, { $inc: { stock: netAdjust } }).session(session);
+                }
+            }
+            await InventoryLog.deleteMany({ change_type: 'SALE', reason: `Sale ${receipt_ref}` }).session(session);
+            await InventoryLog.deleteMany({
+                change_type: 'REFUND',
+                reason: { $regex: new RegExp(`\\(${escapeRegex(receipt_ref)}\\)$`) }
+            }).session(session);
+            await Refund.deleteMany({ receipt_ref }).session(session);
+            await Sale.deleteOne({ _id: sale._id }).session(session);
+            result = { ok: true };
         });
         return result;
     }

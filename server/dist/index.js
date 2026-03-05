@@ -9,14 +9,14 @@ import { findUserByUsername, hashPassword, signToken, verifyPassword } from './a
 import { audit } from './audit.js';
 import { requireAuth, requireRole } from './middleware/authz.js';
 import { CreateCustomerSchema, CreateExpenseSchema, CreateProductSchema, CreateSaleSchema, DecreaseStockSchema, RefundSaleSchema, RestockSchema, UpdateCustomerSchema, UpdateProductSchema } from './schemas.js';
-import { archiveProduct, createProduct, decreaseStockProduct, inventorySummary, listProducts, productStockHistory, restockProduct, updateProduct } from './inventory.js';
-import { createSale, getSaleByReceipt, getSalesHistory, refundSaleByReceipt, salesReport } from './sales.js';
-import { createCustomer, listCustomers, updateCustomer } from './customers.js';
-import { createExpense, getExpense, listExpenses } from './expenses.js';
+import { archiveProduct, createProduct, decreaseStockProduct, deleteProductPermanently, inventorySummary, listProducts, productStockHistory, restockProduct, updateProduct } from './inventory.js';
+import { createSale, deleteSaleByReceipt, getSaleByReceipt, getSalesHistory, refundSaleByReceipt, salesReport } from './sales.js';
+import { createCustomer, deleteCustomer, listCustomers, updateCustomer } from './customers.js';
+import { createExpense, deleteExpense, getExpense, listExpenses } from './expenses.js';
 import { sendPdf, hr, kv, money, tableHeader, tableRow, title } from './pdf.js';
 import { customerInsightsReport, lowStockReport, profitReport, topProductsReport } from './reports.js';
-import { AuditLog, User } from './models.js';
-// Ensure local `api/.env` reliably overrides any pre-existing environment variables (Windows often has stale env)
+import { AuditLog, Customer, Expense, InventoryLog, Product, Refund, Sale, User } from './models.js';
+// Ensure local env file reliably overrides any pre-existing environment variables (Windows often has stale env)
 dotenv.config({ override: true });
 const app = express();
 app.use(cors());
@@ -86,8 +86,11 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
         password: z.string().min(1)
     });
     const parsed = schema.safeParse(req.body);
-    if (!parsed.success)
-        return res.status(400).json(parsed.error.flatten());
+    if (!parsed.success) {
+        const errors = parsed.error.flatten().fieldErrors;
+        const errorMsg = Object.values(errors).flat().join(', ') || 'Invalid input';
+        return res.status(400).json({ error: errorMsg });
+    }
     const u = await findUserByUsername(parsed.data.username.trim());
     if (!u)
         return res.status(401).json({ error: 'Invalid username or password' });
@@ -131,6 +134,16 @@ app.put('/api/customers/:id', requireRole(['owner']), asyncHandler(async (req, r
     await updateCustomer(String(req.params.id), parsed.data);
     await audit(req, req.user ?? null, 'customer.update', 'customer', String(req.params.id), parsed.data);
     res.json({ ok: true });
+}));
+app.delete('/api/customers/:id', requireRole(['owner']), asyncHandler(async (req, res) => {
+    try {
+        await deleteCustomer(String(req.params.id));
+        await audit(req, req.user ?? null, 'customer.delete', 'customer', String(req.params.id));
+        res.json({ ok: true });
+    }
+    catch (e) {
+        res.status(400).json({ error: e?.message ?? 'Failed to delete customer' });
+    }
 }));
 // --- Expenses ---
 app.get('/api/expenses', requireRole(['owner']), asyncHandler(async (req, res) => {
@@ -180,6 +193,16 @@ app.post('/api/expenses', requireRole(['owner']), asyncHandler(async (req, res) 
     }
     catch (e) {
         res.status(400).json({ error: e?.message ?? 'Expense failed' });
+    }
+}));
+app.delete('/api/expenses/:id', requireRole(['owner']), asyncHandler(async (req, res) => {
+    try {
+        await deleteExpense(String(req.params.id));
+        await audit(req, req.user ?? null, 'expense.delete', 'expense', String(req.params.id));
+        res.json({ ok: true });
+    }
+    catch (e) {
+        res.status(400).json({ error: e?.message ?? 'Failed to delete expense' });
     }
 }));
 // Products / Inventory
@@ -279,6 +302,16 @@ app.delete('/api/products/:id', requireRole(['owner']), asyncHandler(async (req,
         res.status(400).json({ error: e?.message ?? 'Failed to remove product' });
     }
 }));
+app.delete('/api/products/:id/permanent', requireRole(['owner']), asyncHandler(async (req, res) => {
+    try {
+        await deleteProductPermanently(String(req.params.id));
+        await audit(req, req.user ?? null, 'product.delete', 'product', String(req.params.id));
+        res.json({ ok: true });
+    }
+    catch (e) {
+        res.status(400).json({ error: e?.message ?? 'Failed to delete product' });
+    }
+}));
 app.post('/api/products/:id/restock', requireRole(['owner']), asyncHandler(async (req, res) => {
     const parsed = RestockSchema.safeParse(req.body);
     if (!parsed.success)
@@ -347,6 +380,32 @@ app.get('/api/reports/inventory/pdf', requireRole(['owner']), asyncHandler(async
         kv(doc, 'Inventory Value', money(report.totals?.total_inventory_value ?? 0));
     });
 }));
+// --- Admin / Danger Zone ---
+app.post('/api/admin/wipe', requireRole(['owner']), asyncHandler(async (req, res) => {
+    const schema = z.object({
+        confirm: z.string().min(1),
+        includeUsers: z.boolean().optional()
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success)
+        return res.status(400).json(parsed.error.flatten());
+    if (parsed.data.confirm.trim().toUpperCase() !== 'DELETE ALL') {
+        return res.status(400).json({ error: 'Type DELETE ALL to confirm' });
+    }
+    const includeUsers = Boolean(parsed.data.includeUsers);
+    const deleted = {};
+    deleted.customers = (await Customer.deleteMany({})).deletedCount ?? 0;
+    deleted.products = (await Product.deleteMany({})).deletedCount ?? 0;
+    deleted.inventory_log = (await InventoryLog.deleteMany({})).deletedCount ?? 0;
+    deleted.sales = (await Sale.deleteMany({})).deletedCount ?? 0;
+    deleted.refunds = (await Refund.deleteMany({})).deletedCount ?? 0;
+    deleted.expenses = (await Expense.deleteMany({})).deletedCount ?? 0;
+    deleted.audit_log = (await AuditLog.deleteMany({})).deletedCount ?? 0;
+    if (includeUsers)
+        deleted.users = (await User.deleteMany({})).deletedCount ?? 0;
+    await audit(req, req.user ?? null, 'admin.wipe', 'admin', 'wipe', { includeUsers, deleted });
+    res.json({ ok: true, deleted });
+}));
 // Sales / POS
 app.post('/api/sales', requireRole(['owner', 'cashier']), asyncHandler(async (req, res) => {
     const parsed = CreateSaleSchema.safeParse(req.body);
@@ -371,6 +430,17 @@ app.get('/api/sales/:receipt_ref', requireRole(['owner', 'cashier']), asyncHandl
     if (!sale)
         return res.status(404).json({ error: 'Not found' });
     res.json(sale);
+}));
+app.delete('/api/sales/:receipt_ref', requireRole(['owner']), asyncHandler(async (req, res) => {
+    try {
+        const receipt_ref = String(req.params.receipt_ref);
+        await deleteSaleByReceipt(receipt_ref);
+        await audit(req, req.user ?? null, 'sale.delete', 'sale', receipt_ref);
+        res.json({ ok: true });
+    }
+    catch (e) {
+        res.status(400).json({ error: e?.message ?? 'Failed to delete sale' });
+    }
 }));
 app.post('/api/sales/:receipt_ref/refund', requireRole(['owner', 'cashier']), asyncHandler(async (req, res) => {
     const parsed = RefundSaleSchema.safeParse(req.body);
@@ -439,19 +509,26 @@ app.use((err, _req, res, _next) => {
     }
     res.status(500).json({ error: rawMsg });
 });
-// --- Serve the React web app in production ---
-const webDist = path.resolve(process.cwd(), '..', 'web', 'dist');
-if (fs.existsSync(webDist)) {
-    app.use(express.static(webDist));
-    // SPA fallback
-    app.get('*', (req, res) => {
-        if (req.path.startsWith('/api') || req.path === '/health') {
-            return res.status(404).json({ error: 'Not found' });
-        }
-        res.sendFile(path.join(webDist, 'index.html'));
+// In Vercel we serve the web app separately via static output + rewrites.
+// Local/prod server deployments may still serve the built web app directly.
+if (!process.env.VERCEL) {
+    const webDist = path.resolve(process.cwd(), '..', 'web', 'dist');
+    if (fs.existsSync(webDist)) {
+        app.use(express.static(webDist));
+        // SPA fallback
+        app.get('*', (req, res) => {
+            if (req.path.startsWith('/api') || req.path === '/health') {
+                return res.status(404).json({ error: 'Not found' });
+            }
+            res.sendFile(path.join(webDist, 'index.html'));
+        });
+    }
+}
+export default app;
+// Local dev / non-Vercel environments run as a normal server process.
+if (!process.env.VERCEL) {
+    const port = Number(process.env.PORT ?? 5050);
+    app.listen(port, () => {
+        console.log(`Elman server listening on http://localhost:${port}`);
     });
 }
-const port = Number(process.env.PORT ?? 5050);
-app.listen(port, () => {
-    console.log(`Elman server listening on http://localhost:${port}`);
-});

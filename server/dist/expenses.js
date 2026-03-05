@@ -71,3 +71,10 @@ export async function createExpense(input) {
     });
     return String(e._id);
 }
+export async function deleteExpense(id) {
+    const _id = new mongoose.Types.ObjectId(id);
+    const del = await Expense.deleteOne({ _id });
+    if (!del.deletedCount)
+        throw new Error('Expense not found');
+    return { ok: true };
+}

@@ -229,6 +229,22 @@ export function InventoryPage() {
     }
   }
 
+  async function submitHardDeleteProduct() {
+    if (!deleteProduct) return;
+    const ok = confirm(
+      `Delete "${deleteProduct.productName}" permanently from MongoDB?\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      await api.del(`/api/products/${deleteProduct.productId}/permanent`);
+      setRows((prev) => prev.filter((r) => String(r.id) !== String(deleteProduct.productId)));
+      closeDeleteProduct();
+      await load();
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, 'Failed to delete product'));
+    }
+  }
+
   async function openHistory(p: Product) {
     setHistoryFor({ productId: String(p.id), productName: p.name });
     setHistoryRows([]);
@@ -708,24 +724,24 @@ export function InventoryPage() {
 
       {deleteProduct && (
         <div className='fixed inset-0 z-20 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center'>
-          <div className='my-8 w-full max-w-xl rounded-2xl bg-white p-6 shadow-soft sm:p-8'>
+          <div className='my-8 w-full max-w-xl rounded-2xl bg-white p-6 shadow-soft dark:bg-slate-950 dark:ring-1 dark:ring-slate-800 sm:p-8'>
             <div className='flex items-center justify-between'>
-              <div className='text-lg font-extrabold text-slate-900'>Remove Product</div>
+              <div className='text-lg font-extrabold text-slate-900 dark:text-slate-100'>Remove Product</div>
               <button
                 type='button'
                 onClick={closeDeleteProduct}
-                className='rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                className='rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100'
                 aria-label='Close'
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className='mt-2 text-sm text-slate-600'>
+            <div className='mt-2 text-sm text-slate-600 dark:text-slate-300'>
               This removes the product from Inventory and POS. Sales history stays intact.
             </div>
 
-            <div className='mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800'>
+            <div className='mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200'>
               You are about to remove <span className='font-semibold'>{deleteProduct.productName}</span>.
             </div>
 
@@ -733,7 +749,7 @@ export function InventoryPage() {
               <button
                 type='button'
                 onClick={closeDeleteProduct}
-                className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'
+                className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-200 dark:hover:bg-slate-900'
               >
                 Cancel
               </button>
@@ -742,7 +758,14 @@ export function InventoryPage() {
                 onClick={submitDeleteProduct}
                 className='rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-red-700'
               >
-                Remove
+                Archive (hide)
+              </button>
+              <button
+                type='button'
+                onClick={submitHardDeleteProduct}
+                className='rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-rose-700'
+              >
+                Delete permanently
               </button>
             </div>
           </div>
